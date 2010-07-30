@@ -36,14 +36,22 @@ dnl {{{ libapreq2
 AC_MSG_CHECKING([for libapreq2])
 if which apreq2-config &>/dev/null; then
 	APREQ2_VERSION=`apreq2-config --library-version`
+
 	APREQ2_CFLAGS=`apreq2-config --includes`
-	APREQ2_LIBS=`apreq2-config --link-libtool --ldflags --libs`
+
+	dnl make use of .la file if present, fallback to --ldflags output
+	APREQ2_LAFILE=`apreq2-config --lafile`
+	if test -n "$APREQ2_LAFILE" && test -f "$APREQ2_LAFILE"; then
+		APREQ2_LDFLAGS=$APREQ2_LAFILE
+	else
+		APREQ2_LDFLAGS=`apreq2-config --ldflags`
+	fi
 
 	AC_MSG_RESULT([yes (version $APREQ2_VERSION)])
 
 	AC_SUBST(APREQ2_VERSION)
 	AC_SUBST(APREQ2_CFLAGS)
-	AC_SUBST(APREQ2_LIBS)
+	AC_SUBST(APREQ2_LDFLAGS)
 else
 	AC_MSG_RESULT([no])
 	AC_MSG_ERROR([*** libapreq2 is required for mod_transform to compile.])
