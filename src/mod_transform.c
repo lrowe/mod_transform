@@ -26,8 +26,6 @@
 #include "mod_transform_private.h"
 #include <libxslt/extensions.h>
 #include <libxml/xpathInternals.h>
-#include <apr_dso.h>
-#include <ctype.h>
 
 static void transform_error_cb(void *ctx, const char *msg, ...)
 {
@@ -135,17 +133,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
         return pass_failure(f, "XSLT: Loading of the XSLT File has failed", notes);
     }
 
-    /* mod_transform plugin hook into transform_run: "begin" */
-    {
-        transform_plugin_info_t *pluginInfo;
-
-        for (pluginInfo = sconf->plugins; pluginInfo != NULL; pluginInfo = pluginInfo->next)
-        {
-            if (pluginInfo->plugin->transform_run_begin != NULL)
-                (*pluginInfo->plugin->transform_run_begin)(f);
-        }
-    }
-
     // create a new transform context
     tcontext = xsltNewTransformContext (transform, doc);
     // Allow XPath functions to have access to request_rec
@@ -221,36 +208,6 @@ static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
     xmlParserInputBufferCreateFilenameDefault(orig);
 
     ap_pass_brigade(output_ctx.next, output_ctx.bb);
-
-    /* mod_transform plugin hook into transform_run: "done" */
-    {
-        transform_plugin_info_t *pluginInfo;
-
-        for (pluginInfo = sconf->plugins; pluginInfo != NULL; pluginInfo = pluginInfo->next)
-        {
-            if (pluginInfo->plugin->transform_run_end != NULL)
-                (*pluginInfo->plugin->transform_run_end)(f);
-        }
-    }
-
-    return APR_SUCCESS;
-}
-
-static apr_status_t transform_filter_init(ap_filter_t * f)
-{
-    svr_cfg *sconf = ap_get_module_config(f->r->server->module_config,
-        &transform_module);
-
-    /* mod_transform plugin hook into filter_init */
-    {
-        transform_plugin_info_t *pluginInfo;
-
-        for (pluginInfo = sconf->plugins; pluginInfo != NULL; pluginInfo = pluginInfo->next)
-        {
-            if (pluginInfo->plugin->filter_init != NULL)
-                (*pluginInfo->plugin->filter_init)(f);
-        }
-    }
 
     return APR_SUCCESS;
 }
@@ -364,7 +321,6 @@ static void *create_server_cfg(apr_pool_t * p, server_rec * x)
     svr_cfg *cfg = apr_pcalloc(p, sizeof(svr_cfg));
     apr_pool_cleanup_register(p, cfg, transform_cache_free, apr_pool_cleanup_null);
     cfg->announce = 1;
-    cfg->plugins = NULL;
     return cfg;
 }
 
@@ -474,16 +430,6 @@ static void transform_child_init(apr_pool_t *p, server_rec *s)
     /* register EXSLT functions */
     exsltRegisterAll();
 
-    /* mod_transform plugin hook into child_init */
-    {
-        transform_plugin_info_t *pluginInfo;
-
-        for (pluginInfo = sconf->plugins; pluginInfo != NULL; pluginInfo = pluginInfo->next)
-        {
-            if (pluginInfo->plugin->child_init != NULL)
-                (*pluginInfo->plugin->child_init)(p, s);
-        }
-    }
 }
 
 static const char *set_announce(cmd_parms *cmd, 
@@ -502,87 +448,6 @@ static const char *set_announce(cmd_parms *cmd,
     return NULL;
 }
 
-static const char **build_args(apr_pool_t *pool, const char *line, int *argc) {
-    char *args[512];
-    char *word;
-    int count;
-
-    count = 0;
-
-    while (line[0]) {
-        word = ap_getword_conf(pool, &line);
-        if (count == (sizeof(args) / sizeof(*args)))
-            /* too many args. cut here off - this is pretty ugly, and yet, unusual to exceed the limit as well */
-            break;
-
-        args[count++] = word;
-    }
-    args[count] = NULL;
-
-    if (argc)
-        *argc = count;
-
-    const char **result = (const char **)apr_palloc(pool, sizeof(char *) * count);
-    memcpy(result, args, sizeof(char *) * count);
-    return result;
-}
-
-static const char *transform_load_plugin(cmd_parms *cmd, void *cfg, const char *raw_args)
-{
-    int argc;
-    const char **argv = build_args(cmd->pool, raw_args, &argc);
-
-    svr_cfg *sconf = ap_get_module_config(cmd->server->module_config, &transform_module);
-
-    transform_plugin_info_t *pluginInfo = apr_pcalloc(cmd->pool, sizeof(transform_plugin_info_t));
-    apr_dso_handle_sym_t pluginSym = NULL;
-
-    char *pluginFileName = apr_psprintf(cmd->pool, "%s/%s/%s.so", DEFAULT_EXP_LIBEXECDIR, PACKAGE_NAME, argv[0]);
-    char *pluginRecord = apr_psprintf(cmd->pool, "%s_plugin", argv[0]);
-
-    char *p;
-
-    pluginInfo->name = argv[0];
-    pluginInfo->argc = argc;
-    pluginInfo->argv = argv;
-
-    /* replace all characters that might not be part of a symbol name */
-    for (p = pluginRecord; *p; ++p)
-        if (!isalnum(*p))
-           *p = '_';
-
-    /* though, if the symbol name begins with a digit, we need to prefix it */
-    if (isdigit(*pluginRecord))
-        pluginRecord = apr_psprintf(cmd->pool, "_%s", pluginRecord);
-
-    apr_status_t rv = apr_dso_load(&pluginInfo->handle, pluginFileName, cmd->pool);
-    if (rv != 0) {
-        static char errorMsg[256];
-
-        return apr_dso_error(pluginInfo->handle, errorMsg, sizeof(errorMsg));
-    }
-
-    rv = apr_dso_sym(&pluginSym, pluginInfo->handle, pluginRecord);
-    if (rv != 0) {
-        char errbuf[256];
-
-        return apr_psprintf(cmd->pool, "mod_transform: %s: Cannot find symbol: %s: %s", 
-            pluginFileName, pluginRecord, apr_dso_error(pluginInfo->handle, errbuf, sizeof(errbuf)));
-    }
-
-    pluginInfo->plugin = pluginSym;
-
-    if (pluginInfo->plugin->plugin_init != NULL)
-        if ((*pluginInfo->plugin->plugin_init)(cmd->pool, pluginInfo->argc, pluginInfo->argv) != APR_SUCCESS)
-            return apr_psprintf(cmd->pool, "mod_transform: %s: Error in plugin initialization.", argv[0]);
-
-    pluginInfo->next = sconf->plugins;
-
-    sconf->plugins = pluginInfo;
-
-    return NULL;
-}
-
 static int transform_post_config(apr_pool_t *p, apr_pool_t *log, apr_pool_t *ptemp,
 					server_rec *s)
 {
@@ -591,34 +456,7 @@ static int transform_post_config(apr_pool_t *p, apr_pool_t *log, apr_pool_t *pte
 
     /* Add version string to Apache headers */
     if (cfg->announce) {
-        char *compinfo = PACKAGE_NAME "/" PACKAGE_VERSION;
-
-        if (cfg->plugins) {
-            char *pinfos = (char *)cfg->plugins->name;
-            transform_plugin_info_t *pinfo;
-
-            for (pinfo = cfg->plugins->next; pinfo; pinfo = pinfo->next)
-                pinfos = apr_psprintf(p, "%s, %s", pinfo->name, pinfos);
-
-            compinfo = apr_psprintf(p, "%s (%s)", compinfo, pinfos);
-        }
-
-        ap_add_version_component(p, compinfo);
-    }
-
-    /* mod_transform plugin hook into post_config */
-    {
-        const transform_plugin_info_t *pluginInfo;
-        int errors = 0;
-
-        for (pluginInfo = cfg->plugins; pluginInfo != NULL; pluginInfo = pluginInfo->next)
-        {
-            if (pluginInfo->plugin->post_config != NULL)
-                if ((*pluginInfo->plugin->post_config)(p, pluginInfo->argc, pluginInfo->argv) != APR_SUCCESS)
-                    ++errors;
-        }
-        if (errors != 0)
-            exit(1);
+        ap_add_version_component(p, PACKAGE_NAME"/"PACKAGE_VERSION);
     }
 
     return OK;
@@ -632,7 +470,7 @@ static void transform_hooks(apr_pool_t * p)
 
     ap_hook_post_read_request(init_notes, NULL, NULL, APR_HOOK_MIDDLE);
 
-    ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, transform_filter_init,
+    ap_register_output_filter(XSLT_FILTER_NAME, transform_filter, NULL,
                               AP_FTYPE_RESOURCE);
     ap_register_output_filter(APACHEFS_FILTER_NAME, transform_apachefs_filter, NULL,
                               AP_FTYPE_RESOURCE);
@@ -652,9 +490,6 @@ static const command_rec transform_cmds[] = {
 
     AP_INIT_FLAG("TransformAnnounce", set_announce, NULL, RSRC_CONF,
                  "Whether to announce this module in the server header. Default: On"),
-
-    AP_INIT_RAW_ARGS("TransformLoadPlugin", transform_load_plugin, NULL, RSRC_CONF,
-                  "Loads a plugin at given location."),
 
     {NULL}
 };
@@ -685,5 +520,3 @@ void mod_transform_XSLTDoc(request_rec * r, xmlDocPtr doc)
     notes->document = doc;
 }
 
-/* vim:ai:et:ts=4:nowrap
- */

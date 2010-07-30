@@ -5,7 +5,6 @@
  *    Authors:    Nick Kew <nick webthing.com>
  *                Edward Rudd <eddie at omegaware dot com>
  *                Paul Querna <chip at force-elite.com>
- *                Christian Parpart <trapni at gentoo.org>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -40,7 +39,6 @@
 #include "apr_strings.h"
 #include "apr_uri.h"
 #include "apr_tables.h"
-#include "apr_dso.h"
 
 #include <libxml/globals.h>
 #include <libxml/threads.h>
@@ -73,23 +71,10 @@ typedef struct transform_xslt_cache
 }
 transform_xslt_cache;
 
-typedef struct transform_plugin_info {
-    const char *name;
-    int argc;
-    const char **argv;
-
-    apr_dso_handle_t *handle;
-    mod_transform_plugin_t *plugin;
-
-    struct transform_plugin_info *next;
-}
-transform_plugin_info_t;
-
 typedef struct svr_cfg
 {
     transform_xslt_cache *data;
     int announce;
-    transform_plugin_info_t *plugins;
 }
 svr_cfg;
 
@@ -144,5 +129,3 @@ const char *transform_cache_add(cmd_parms * cmd, void *cfg, const char *url,
                                 const char *path);
 
 #endif /* _MOD_TRANSFORM_PRIVATE_H */
-/* vim:ai:et:ts=4:nowrap
- */
