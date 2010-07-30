@@ -42,6 +42,6 @@ AC_OUTPUT
 echo "---"
 echo "Configuration summary for mod_transform"
 echo ""
-echo "   * Apache Dodules Directory:    $AP_LIBEXECDIR"
+echo "   * Apache Modules Directory:    $AP_LIBEXECDIR"
 echo ""
 echo "---"
