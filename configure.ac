@@ -32,33 +32,6 @@ AM_PATH_XSLT(1.1.5,
     AC_MSG_ERROR([could not find libxslt])
 )
 
-dnl {{{ libapreq2
-AC_MSG_CHECKING([for libapreq2])
-if which apreq2-config &>/dev/null; then
-	APREQ2_VERSION=`apreq2-config --library-version`
-
-	APREQ2_CFLAGS=`apreq2-config --includes`
-
-	dnl make use of .la file if present, fallback to --ldflags output
-	APREQ2_LAFILE=`apreq2-config --lafile`
-	if test -n "$APREQ2_LAFILE" && test -f "$APREQ2_LAFILE"; then
-		APREQ2_LDFLAGS=$APREQ2_LAFILE
-	else
-		APREQ2_LDFLAGS=`apreq2-config --ldflags`
-	fi
-
-	AC_MSG_RESULT([yes (version $APREQ2_VERSION)])
-
-	AC_SUBST(APREQ2_VERSION)
-	AC_SUBST(APREQ2_CFLAGS)
-	AC_SUBST(APREQ2_LDFLAGS)
-else
-	AC_MSG_RESULT([no])
-	AC_MSG_ERROR([*** libapreq2 is required for mod_transform to compile.])
-	AC_MSG_ERROR([*** Please download it from: http://httpd.apache.org/apreq/])
-fi
-dnl }}}
-
 MODULE_CFLAGS="${APXS_CFLAGS} ${AP_INCLUDES} ${APR_INCLUDES} ${APU_INCLUDES}"
 
 AC_SUBST(MODULE_CFLAGS)
