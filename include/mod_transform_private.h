@@ -61,6 +61,8 @@ extern module AP_MODULE_DECLARE_DATA transform_module;
 #define NO_OPTIONS          (1 <<  0)
 #define USE_APACHE_FS       (1 <<  1)
 #define XINCLUDES           (1 <<  2)
+#define USE_HTML_PARSER     (1 <<  4)
+#define HIDE_PARSE_ERRORS   (1 <<  8)
 
 /* Static Style Sheet Caching */
 typedef struct transform_xslt_cache

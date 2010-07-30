@@ -26,6 +26,7 @@
 #include "mod_transform_private.h"
 #include <libxslt/extensions.h>
 #include <libxml/xpathInternals.h>
+#include <libxml/HTMLparser.h>
 
 static void transform_error_cb(void *ctx, const char *msg, ...)
 {
@@ -221,6 +222,9 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     apr_status_t ret = APR_SUCCESS;
     void *orig_error_cb = xmlGenericErrorContext;
     xmlGenericErrorFunc orig_error_func = xmlGenericError;
+    dir_cfg *dconf = ap_get_module_config(f->r->per_dir_config,
+                                          &transform_module);
+    int isHtml = 0;
 
     xmlSetGenericErrorFunc((void *) f, transform_error_cb);
 
@@ -233,24 +237,50 @@ static apr_status_t transform_filter(ap_filter_t * f, apr_bucket_brigade * bb)
     if ((f->r->proto_num >= 1001) && !f->r->main && !f->r->prev)
         f->r->chunked = 1;
 
+    isHtml = dconf->opts & USE_HTML_PARSER; /* use html parser  */
+
     for (b = APR_BRIGADE_FIRST(bb);
          b != APR_BRIGADE_SENTINEL(bb); b = APR_BUCKET_NEXT(b)) {
         if (APR_BUCKET_IS_EOS(b)) {
             if (ctxt) {         /* done reading the file. run the transform now */
-                xmlParseChunk(ctxt, buf, 0, 1);
-                ret = transform_run(f, ctxt->myDoc);
-                xmlFreeParserCtxt(ctxt);
+         if (isHtml) {
+                  htmlParseChunk(ctxt, buf, 0, 1);
+                  ret = transform_run(f, ctxt->myDoc);
+                  htmlFreeParserCtxt(ctxt);
+         }
+         else {
+                  xmlParseChunk(ctxt, buf, 0, 1);
+                  ret = transform_run(f, ctxt->myDoc);
+                  xmlFreeParserCtxt(ctxt);
+         }     
             }
         }
         else if (apr_bucket_read(b, &buf, &bytes, APR_BLOCK_READ)
                  == APR_SUCCESS) {
             if (ctxt) {
-                xmlParseChunk(ctxt, buf, bytes, 0);
+           if (isHtml) {
+           htmlParseChunk(ctxt, buf, bytes, 0);
+       }
+       else {
+           xmlParseChunk(ctxt, buf, bytes, 0);
+       }
             }
             else {
-                f->ctx = ctxt = xmlCreatePushParserCtxt(0, 0, buf, bytes, 0);
-                xmlCtxtUseOptions(ctxt, XML_PARSE_NOENT | XML_PARSE_NOCDATA);
-                ctxt->directory = xmlParserGetDirectory(f->r->filename);
+           if (isHtml) {
+           f->ctx = ctxt = htmlCreatePushParserCtxt(0, 0, buf, bytes, 0, XML_CHAR_ENCODING_UTF8);
+           if (dconf->opts & HIDE_PARSE_ERRORS) {
+               htmlCtxtUseOptions(ctxt, HTML_PARSE_RECOVER | HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
+           }
+           else {
+               htmlCtxtUseOptions(ctxt, HTML_PARSE_RECOVER);
+           }
+           
+       }
+       else {
+                    f->ctx = ctxt = xmlCreatePushParserCtxt(0, 0, buf, bytes, 0);
+           xmlCtxtUseOptions(ctxt, XML_PARSE_NOENT | XML_PARSE_NOCDATA);
+       }
+       ctxt->directory = xmlParserGetDirectory(f->r->filename);
             }
         }
     }
@@ -383,6 +413,12 @@ static const char *add_opts(cmd_parms * cmd, void *d, const char *optstr)
         }
         else if (!strcasecmp(w, "XIncludes")) {
             option = XINCLUDES;
+        }
+        else if (!strcasecmp(w, "HTML")) {
+            option = USE_HTML_PARSER;
+        }
+        else if (!strcasecmp(w, "HideParseErrors")) {
+            option = HIDE_PARSE_ERRORS;
         }
         else if (!strcasecmp(w, "None")) {
             if (action != '\0') {
