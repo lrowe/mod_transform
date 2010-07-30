@@ -32,15 +32,6 @@ AM_PATH_XSLT(1.1.5,
     AC_MSG_ERROR([could not find libxslt])
 )
 
-AC_MSG_CHECKING([for mod_depends.h])
-if test -f ${AP_INCLUDEDIR}/mod_depends.h; then
-    AC_MSG_RESULT([found it!])
-else
-    AC_MSG_RESULT(no)
-    AC_MSG_WARN([** Please install mod_depends from http://www.outoforder.cc])
-    AC_MSG_ERROR([*** mod_depends is required for mod_transform.])
-fi 
-
 dnl {{{ libapreq2
 AC_MSG_CHECKING([for libapreq2])
 if which apreq2-config &>/dev/null; then
