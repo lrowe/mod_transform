@@ -64,9 +64,6 @@ extern module AP_MODULE_DECLARE_DATA transform_module;
 #define USE_APACHE_FS       (1 <<  1)
 #define XINCLUDES           (1 <<  2)
 
-/* Extension Namespace */
-#define TRANSFORM_APACHE_NAMESPACE ((const xmlChar *) "http://outoforder.cc/apache")
-
 /* Static Style Sheet Caching */
 typedef struct transform_xslt_cache
 {

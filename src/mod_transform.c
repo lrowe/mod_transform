@@ -68,69 +68,6 @@ static xmlNodePtr find_stylesheet_node(xmlDocPtr doc)
     return NULL;
 }
 
-static void transformApacheGetFunction (xmlXPathParserContextPtr ctxt, int nargs)
-{
-    if (nargs != 1) {
-        xmlXPathSetArityError(ctxt);
-        return;
-    }
-
-    if (ctxt->context->userData) {
-        xmlChar *variable;
-        request_rec *r = ctxt->context->userData;
-        variable = xmlXPathPopString(ctxt);
-
-        ap_log_rerror(APLOG_MARK, APLOG_WARNING, 0, r,
-            "mod_transform: Warning, Using deprecated XPath HTTP get() function! Fix your XSLT!");
-
-        if (r->args) {
-            char found = 0;
-            char *key;
-            char *value;
-            char *query_string;
-            char *strtok_state;
-       
-            ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "Requesting Get Aarg: %s", variable);
-
-            query_string = apr_pstrdup(r->pool, r->args);
-
-		    key = apr_strtok(query_string, "&", &strtok_state);
-		    while (key) {
-		        value = strchr(key, '=');
-		        if (value) {
-		            *value = '\0';      /* Split the string in two */
-		            value++;            /* Skip passed the = */
-		        }
-		        else {
-		            value = "1";
-		        }
-		        ap_unescape_url(key);
-                // Is this the parameter we want?
-                if (apr_strnatcmp(variable,key)==0) {
-                    ap_unescape_url(value);
-                    xmlXPathReturnString(ctxt, xmlStrdup((xmlChar *)value));
-                    found = 1;
-                    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                        "Found query arg: %s = %s", key, value);
-                    break;
-                } else {
-    		        key = apr_strtok(NULL, "&", &strtok_state);
-                }
-		    }
-            if (!found) {
-                xmlXPathReturnEmptyString(ctxt);
-            }
-        } else { // No query
-            xmlXPathReturnEmptyString(ctxt);
-        }
-        if (variable) {
-            xmlFree(variable);
-        }
-    } else { // no request_rec bail
-        xmlXPathSetError(ctxt, XPATH_INVALID_CTXT);
-    }
-}
-
 static apr_status_t transform_run(ap_filter_t * f, xmlDocPtr doc)
 {
     size_t length;
@@ -537,11 +474,6 @@ static void transform_child_init(apr_pool_t *p, server_rec *s)
 
     /* register EXSLT functions */
     exsltRegisterAll();
-
-    // Register mod_transform XSLT functions
-    xsltRegisterExtModuleFunction ((const xmlChar *) "get",
-                    TRANSFORM_APACHE_NAMESPACE,
-                    transformApacheGetFunction);
 
     /* mod_transform plugin hook into child_init */
     {
